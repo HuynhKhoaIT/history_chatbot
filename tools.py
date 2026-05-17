@@ -14,7 +14,10 @@ Sau đó:
 
 import inspect
 import json
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
+
+# VN không áp dụng DST → offset cố định UTC+7, đúng bất kể host UTC hay local
+VN_TZ = timezone(timedelta(hours=7))
 from typing import Callable, get_type_hints
 
 try:
@@ -94,8 +97,8 @@ def execute_tool(name: str, args: dict) -> str:
 
 @tool
 def get_current_time() -> str:
-    """Lấy thời gian hiện tại của hệ thống dưới dạng HH:MM ngày DD/MM/YYYY. Dùng khi user hỏi giờ giấc, ngày tháng hiện tại."""
-    return datetime.now().strftime("%H:%M ngày %d/%m/%Y")
+    """Lấy giờ Việt Nam hiện tại (UTC+7) dạng HH:MM ngày DD/MM/YYYY. Dùng khi user hỏi giờ giấc, ngày tháng hiện tại."""
+    return datetime.now(VN_TZ).strftime("%H:%M ngày %d/%m/%Y") + " (giờ VN)"
 
 
 @tool
