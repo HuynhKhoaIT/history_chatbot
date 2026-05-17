@@ -76,13 +76,32 @@ if prompt:
                 )
             st.write_stream(stream_text(answer))
             with st.expander("ℹ️ Chi tiết intent"):
+                _h = st.session_state.history
                 st.write(
                     {
+                        "query_input": query,
+                        "rewritten_query": intent_result.rewritten_query,
+                        "query_dùng_cho_RAG": (
+                            intent_result.rewritten_query or query
+                        ),
                         "intent": intent_result.intent,
                         "category": intent_result.category,
                         "confidence": round(intent_result.confidence, 2),
                         "reasoning": intent_result.reasoning,
-                        "rewritten_query": intent_result.rewritten_query,
+                        # history thực sự được gửi cho lượt này (chưa
+                        # append lượt hiện tại — append diễn ra sau).
+                        "history_summary": _h.summary or None,
+                        "history_messages_đã_gửi": [
+                            {
+                                "role": m["role"],
+                                "content": (
+                                    m["content"][:200] + "…"
+                                    if len(m["content"]) > 200
+                                    else m["content"]
+                                ),
+                            }
+                            for m in _h.recent()
+                        ],
                     }
                 )
             intent = intent_result.intent

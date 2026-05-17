@@ -54,14 +54,21 @@ def _self_check(answer: str) -> ModelSelfCheck:
     return response.choices[0].message.parsed
 
 
-def model_query(query: str, verbose: bool = True) -> str:
+def model_query(query: str, verbose: bool = True, history=None) -> str:
     """Fallback cuối: model trả lời với guardrails + self-check."""
-    response = openai_client.chat.completions.create(
-        model=CHAT_MODEL,
-        messages=[
+    # Giống handle_chitchat: history (summary + lượt gần nhất) trước câu hỏi.
+    if history is not None:
+        messages = history.context(SYSTEM_PROMPT_MODEL) + [
+            {"role": "user", "content": query}
+        ]
+    else:
+        messages = [
             {"role": "system", "content": SYSTEM_PROMPT_MODEL},
             {"role": "user", "content": query},
-        ],
+        ]
+    response = openai_client.chat.completions.create(
+        model=CHAT_MODEL,
+        messages=messages,
         max_completion_tokens=400,
         temperature=0.2,
     )

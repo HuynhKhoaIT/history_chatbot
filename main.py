@@ -99,24 +99,33 @@ def handle_chitchat(query: str, history: ChatHistory, max_iter: int = 4) -> str:
 # VN History cascade
 # ============================================================
 
-def handle_vn_history(query: str, index, category: str | None = None, verbose: bool = True) -> str:
-    """Cascade: PDF → Wiki → Model. category dùng để filter Pinecone ở step PDF."""
+def handle_vn_history(
+    query: str, index, category: str | None = None, verbose: bool = True, history=None
+) -> str:
+    """Cascade: PDF → Wiki → Model. category dùng để filter Pinecone ở step PDF.
+
+    history (ChatHistory) được truyền xuống cả 3 tầng để model nhớ câu hỏi
+    trước đó của user (giống handle_chitchat). Retrieval vẫn dùng query đã
+    rewrite; grounding vẫn buộc fact từ CONTEXT theo system prompt mỗi tầng.
+    """
     if verbose:
         cat_tag = f" (category={category})" if category else " (no filter)"
         print(f"→ Step 1: RAG từ PDF{cat_tag}...")
-    pdf_ans, pdf_grounded, _ = rag_pdf_query(index, query, category=category, verbose=verbose)
+    pdf_ans, pdf_grounded, _ = rag_pdf_query(
+        index, query, category=category, verbose=verbose, history=history
+    )
     if pdf_grounded and FALLBACK_NO_INFO not in pdf_ans:
         return pdf_ans + "\n(Nguồn: tài liệu PDF)"
 
     if verbose:
         print("→ Step 2: Fallback Wikipedia...")
-    wiki_ans, wiki_grounded = wiki_query(query, verbose=verbose)
+    wiki_ans, wiki_grounded = wiki_query(query, verbose=verbose, history=history)
     if wiki_grounded and FALLBACK_NO_INFO not in wiki_ans:
         return wiki_ans
 
     if verbose:
         print("→ Step 3: Fallback Model (guardrails)...")
-    return model_query(query, verbose=verbose)
+    return model_query(query, verbose=verbose, history=history)
 
 
 # ============================================================
@@ -155,7 +164,11 @@ def answer_query(query: str, index, history: ChatHistory, verbose: bool = True):
         if verbose and intent_result.rewritten_query:
             print(f"  ✏️  Rewrite cho RAG: '{rag_query}'")
         answer = handle_vn_history(
-            rag_query, index, category=intent_result.category, verbose=verbose
+            rag_query,
+            index,
+            category=intent_result.category,
+            verbose=verbose,
+            history=history,
         )
 
     return answer, intent_result

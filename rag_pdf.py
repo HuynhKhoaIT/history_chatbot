@@ -11,7 +11,10 @@ QUY TẮC NGHIÊM NGẶT:
 2. CONTEXT không đủ trả lời → nói NGUYÊN VĂN: "{FALLBACK_NO_INFO}"
 3. KHÔNG bịa số liệu, ngày tháng, tên riêng nếu không có trong CONTEXT.
 4. KHÔNG dùng "có lẽ", "tôi nghĩ", "thường thì".
-5. Trả lời NGẮN GỌN, đi thẳng vào ý."""
+5. Trả lời NGẮN GỌN, đi thẳng vào ý.
+6. Lịch sử hội thoại (nếu có) CHỈ để hiểu câu hỏi nối tiếp (đại từ "ông ấy",
+   "trận đó"...). TUYỆT ĐỐI KHÔNG lấy dữ kiện/số liệu từ hội thoại trước —
+   mọi fact phải nằm trong CONTEXT của lượt này."""
 
 
 def retrieve(index, query: str, top_k: int = TOP_K, category: str | None = None) -> list[dict]:
@@ -35,7 +38,7 @@ def retrieve(index, query: str, top_k: int = TOP_K, category: str | None = None)
     ]
 
 
-def generate_answer(query: str, context_docs: list[dict]) -> str:
+def generate_answer(query: str, context_docs: list[dict], history=None) -> str:
     context = "\n\n".join(
         [f"[Đoạn {i+1}]\n{doc['text']}" for i, doc in enumerate(context_docs)]
     )
@@ -45,12 +48,21 @@ def generate_answer(query: str, context_docs: list[dict]) -> str:
         f"Trả lời CHỈ dựa trên CONTEXT. Nếu không có thông tin, "
         f'nói nguyên văn: "{FALLBACK_NO_INFO}"'
     )
-    response = openai_client.chat.completions.create(
-        model=CHAT_MODEL,
-        messages=[
+    # Giống handle_chitchat: chèn history (summary + N lượt gần nhất) trước
+    # câu hỏi hiện tại để model nhớ ngữ cảnh hội thoại. Fact vẫn buộc lấy từ
+    # CONTEXT theo SYSTEM_PROMPT_RAG; history chỉ để hiểu câu hỏi nối tiếp.
+    if history is not None:
+        messages = history.context(SYSTEM_PROMPT_RAG) + [
+            {"role": "user", "content": user_prompt}
+        ]
+    else:
+        messages = [
             {"role": "system", "content": SYSTEM_PROMPT_RAG},
             {"role": "user", "content": user_prompt},
-        ],
+        ]
+    response = openai_client.chat.completions.create(
+        model=CHAT_MODEL,
+        messages=messages,
         max_completion_tokens=400,
         temperature=0.2,
     )
@@ -58,7 +70,7 @@ def generate_answer(query: str, context_docs: list[dict]) -> str:
 
 
 def rag_pdf_query(
-    index, query: str, category: str | None = None, verbose: bool = True
+    index, query: str, category: str | None = None, verbose: bool = True, history=None
 ) -> tuple[str, bool, float]:
     """
     Trả về (answer, is_grounded, top_score).
@@ -84,7 +96,7 @@ def rag_pdf_query(
             print(f"  ⚠️  Score thấp (<{MIN_RAG_SCORE}) → cần fallback")
         return FALLBACK_NO_INFO, False, top_score
 
-    answer = generate_answer(query, context_docs)
+    answer = generate_answer(query, context_docs, history=history)
 
     # nếu generate trả về fallback message thì coi như không tìm thấy
     if FALLBACK_NO_INFO in answer:

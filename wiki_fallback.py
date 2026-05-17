@@ -63,7 +63,10 @@ QUY TẮC:
 1. CHỈ dùng thông tin trong WIKIPEDIA_CONTEXT. KHÔNG dùng kiến thức ngoài.
 2. Nếu WIKIPEDIA_CONTEXT không liên quan / không đủ → nói NGUYÊN VĂN: "{FALLBACK_NO_INFO}"
 3. KHÔNG bịa số liệu, ngày tháng, tên riêng.
-4. Trả lời NGẮN GỌN. KHÔNG tự thêm tag nguồn — caller sẽ append sau khi verify."""
+4. Trả lời NGẮN GỌN. KHÔNG tự thêm tag nguồn — caller sẽ append sau khi verify.
+5. Lịch sử hội thoại (nếu có) CHỈ để hiểu câu hỏi nối tiếp (đại từ "ông ấy",
+   "trận đó"...). TUYỆT ĐỐI KHÔNG lấy dữ kiện từ hội thoại trước — mọi fact
+   phải nằm trong WIKIPEDIA_CONTEXT của lượt này."""
 
 
 def search_wiki(search_term: str) -> list[dict]:
@@ -83,7 +86,7 @@ def search_wiki(search_term: str) -> list[dict]:
     ]
 
 
-def generate_from_wiki(query: str, wiki_docs: list[dict]) -> str:
+def generate_from_wiki(query: str, wiki_docs: list[dict], history=None) -> str:
     context = "\n\n".join(
         [f"[{d['title']}]\n{d['text']}" for d in wiki_docs]
     )
@@ -93,19 +96,27 @@ def generate_from_wiki(query: str, wiki_docs: list[dict]) -> str:
         f"Trả lời CHỈ dựa trên WIKIPEDIA_CONTEXT. Nếu không có thông tin, "
         f'nói nguyên văn: "{FALLBACK_NO_INFO}"'
     )
-    response = openai_client.chat.completions.create(
-        model=CHAT_MODEL,
-        messages=[
+    # Giống handle_chitchat: chèn history trước câu hỏi để nhớ ngữ cảnh.
+    # Fact vẫn buộc lấy từ WIKIPEDIA_CONTEXT theo SYSTEM_PROMPT_WIKI.
+    if history is not None:
+        messages = history.context(SYSTEM_PROMPT_WIKI) + [
+            {"role": "user", "content": user_prompt}
+        ]
+    else:
+        messages = [
             {"role": "system", "content": SYSTEM_PROMPT_WIKI},
             {"role": "user", "content": user_prompt},
-        ],
+        ]
+    response = openai_client.chat.completions.create(
+        model=CHAT_MODEL,
+        messages=messages,
         max_completion_tokens=400,
         temperature=0.2,
     )
     return response.choices[0].message.content.strip()
 
 
-def wiki_query(query: str, verbose: bool = True) -> tuple[str, bool]:
+def wiki_query(query: str, verbose: bool = True, history=None) -> tuple[str, bool]:
     """
     Trả về (answer, is_grounded).
     is_grounded=False khi không tìm thấy hoặc verifier bắt hallucination.
@@ -123,7 +134,7 @@ def wiki_query(query: str, verbose: bool = True) -> tuple[str, bool]:
     if not wiki_docs:
         return FALLBACK_NO_INFO, False
 
-    answer = generate_from_wiki(query, wiki_docs)
+    answer = generate_from_wiki(query, wiki_docs, history=history)
 
     if FALLBACK_NO_INFO in answer:
         return answer, False
